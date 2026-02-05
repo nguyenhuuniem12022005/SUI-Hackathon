@@ -28,7 +28,8 @@
     "mysql2": "^3.6.5",
     "node-cache": "^5.1.2",
     "nodemailer": "^6.9.8",
-    "validator": "^13.11.0"
+    "validator": "^13.11.0",
+    "elliptic": "^6.5.4"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
