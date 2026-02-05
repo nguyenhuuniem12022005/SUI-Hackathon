@@ -1,0 +1,24 @@
+﻿
+export async function requestPasswordResetAPI(email) {
+  try {
+    const res = await axios.post(
+      `${API_URL}/auth/password-reset/request`,
+      { email }
+    );
+    return res.data;
+  } catch (error) {
+    handleAxiosError(error);
+  }
+}
+
+export async function confirmPasswordResetAPI(token, password) {
+  try {
+    const res = await axios.post(
+      `${API_URL}/auth/password-reset/confirm`,
+      { token, password }
+    );
+    return res.data;
+  } catch (error) {
+    handleAxiosError(error);
+  }
+}
