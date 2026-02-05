@@ -8,15 +8,22 @@ import { Textarea } from '../../../components/ui/Textarea';
 import { Button } from '../../../components/ui/Button';
 import ConnectWalletButton from '../../../components/blockchain/ConnectWalletButton';
 import { useWallet } from '../../../context/WalletContext';
-import { UploadCloud, Loader2, ArrowLeft } from 'lucide-react';
+import { UploadCloud, Loader2, ArrowLeft, Coins } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { createProduct, updateProduct, addProductToStore, fetchWarehouses, fetchCategories, executeSimpleToken, fetchMyProductDetail } from '../../../lib/api';
+import { createProduct, updateProduct, addProductToStore, fetchWarehouses, fetchCategories, fetchMyProductDetail } from '../../../lib/api';
+import { Transaction } from '@mysten/sui/transactions';
+
+// Phí đăng bài bằng SUI (0.01 SUI = 10_000_000 MIST)
+const LISTING_FEE_SUI = 0.01;
+const LISTING_FEE_MIST = Math.floor(LISTING_FEE_SUI * 1_000_000_000);
+// Địa chỉ nhận phí (có thể là treasury hoặc burn address)
+const FEE_RECIPIENT = '0x0000000000000000000000000000000000000000000000000000000000000000';
 
 const MAX_PRODUCT_EDITS = 3;
 
 export default function CreateProductPage() {
-  const { isConnected, walletAddress, connectWallet } = useWallet();
+  const { isConnected, walletAddress, executeTransaction, suiBalance } = useWallet();
   const router = useRouter();
   const searchParams = useSearchParams();
   const editingProductId = searchParams.get('productId');
@@ -238,14 +245,43 @@ export default function CreateProductPage() {
     }
 
     if (!isConnected || !walletAddress) {
-      toast.error('Vui lòng liên kết ví HScoin trước khi đăng bài.');
-      connectWallet();
+      toast.error('Vui lòng kết nối ví SUI trước khi đăng bài.');
+      return;
+    }
+
+    // Kiểm tra số dư SUI
+    const currentBalance = Number(suiBalance || 0);
+    if (currentBalance < LISTING_FEE_MIST) {
+      toast.error(`Số dư SUI không đủ! Cần tối thiểu ${LISTING_FEE_SUI} SUI để đăng bài.`);
       return;
     }
 
     setIsSubmitting(true);
     
     try {
+      // Bước 1: Thu phí SUI trên blockchain
+      toast.loading('Đang xử lý phí đăng bài trên SUI...', { id: 'listing-fee' });
+      
+      const tx = new Transaction();
+      
+      // Split SUI coin để trả phí
+      const [feeCoin] = tx.splitCoins(tx.gas, [tx.pure.u64(LISTING_FEE_MIST)]);
+      
+      // Transfer phí đến địa chỉ treasury (hoặc burn)
+      tx.transferObjects([feeCoin], tx.pure.address(FEE_RECIPIENT));
+      
+      try {
+        const txResult = await executeTransaction(tx);
+        console.log('Listing fee transaction:', txResult);
+        toast.success(`Đã trừ ${LISTING_FEE_SUI} SUI phí đăng bài!`, { id: 'listing-fee' });
+      } catch (txError) {
+        console.error('Transaction error:', txError);
+        toast.error(`Giao dịch thất bại: ${txError.message || 'Vui lòng thử lại'}`, { id: 'listing-fee' });
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Bước 2: Lưu thông tin sản phẩm vào kho
       const payload = {
         productId: Number(createdProductId),
         warehouseId: Number(warehouseId),
@@ -254,27 +290,14 @@ export default function CreateProductPage() {
       const result = await addProductToStore(payload);
       
       if (result?.success) {
-        toast.success('Đăng bài thành công! Đang trừ phí ký quỹ...');
-        const burnAmount = Math.max(1, Math.round(Number(price) || 1));
-        try {
-          await executeSimpleToken({
-            caller: walletAddress,
-            method: 'burn',
-            args: [burnAmount],
-            value: 0,
-          });
-          toast.success('Đã trừ phí đăng bài trên HScoin.');
-        } catch (tokenError) {
-          console.error('Burn token error:', tokenError);
-          toast.error(tokenError.message || 'Không thể gọi hợp đồng burn token.');
-        }
+        toast.success('🎉 Đăng bài thành công!');
         router.replace(`/home?posted=${Date.now()}`);
       } else {
         toast.error(result?.message || 'Đăng bài thất bại!');
       }
     } catch (error) {
-      console.error('Error assigning product to warehouse:', error);
-      toast.error(error.message || 'Có lỗi xảy ra khi lưu thông tin kho!');
+      console.error('Error in product listing:', error);
+      toast.error(error.message || 'Có lỗi xảy ra!');
     } finally {
       setIsSubmitting(false);
     }
@@ -478,9 +501,33 @@ export default function CreateProductPage() {
 
                 <hr className="my-6" />
                 
+                {/* Phí đăng bài */}
+                <div className="rounded-lg border-2 border-blue-200 bg-blue-50 p-4">
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+                      <Coins className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-blue-900">Phí đăng bài</p>
+                      <p className="text-2xl font-bold text-blue-600">{LISTING_FEE_SUI} SUI</p>
+                    </div>
+                  </div>
+                  <p className="text-sm text-blue-700">
+                    Phí này được thu để đảm bảo chất lượng sản phẩm và ngăn spam trên nền tảng.
+                  </p>
+                  {suiBalance && (
+                    <p className="text-xs text-blue-600 mt-2">
+                      Số dư hiện tại: {(Number(suiBalance) / 1e9).toFixed(4)} SUI
+                      {Number(suiBalance) < LISTING_FEE_MIST && (
+                        <span className="text-red-600 ml-2">⚠️ Không đủ SUI</span>
+                      )}
+                    </p>
+                  )}
+                </div>
+                
                 <div className="space-y-4">
                   <p className="text-sm text-gray-600">
-                    Kết nối ví để xác thực giao dịch và bảo vệ quyền lợi người mua/bán
+                    Kết nối ví để xác thực giao dịch và thanh toán phí đăng bài
                   </p>
                   <ConnectWalletButton />
                 </div>
@@ -515,12 +562,12 @@ export default function CreateProductPage() {
             ) : (
               <Button 
                 type="submit" 
-                className="flex-1" 
+                className="flex-1 bg-gradient-to-r from-blue-600 to-cyan-500 hover:from-blue-700 hover:to-cyan-600" 
                 size="lg" 
-                disabled={!isConnected || isSubmitting || isLoadingWarehouses || !createdProductId}
+                disabled={!isConnected || isSubmitting || isLoadingWarehouses || !createdProductId || (suiBalance && Number(suiBalance) < LISTING_FEE_MIST)}
               >
-                {isSubmitting ? <Loader2 className="animate-spin mr-2" size={20}/> : null}
-                {isSubmitting ? 'Đang đăng...' : (isConnected ? 'Hoàn tất & Đăng bài' : 'Đăng bài (Cần liên kết ví)')}
+                {isSubmitting ? <Loader2 className="animate-spin mr-2" size={20}/> : <Coins className="mr-2" size={20}/>}
+                {isSubmitting ? 'Đang xử lý...' : (isConnected ? `Đăng bài (${LISTING_FEE_SUI} SUI)` : 'Cần kết nối ví SUI')}
               </Button>
             )}
           </CardFooter>

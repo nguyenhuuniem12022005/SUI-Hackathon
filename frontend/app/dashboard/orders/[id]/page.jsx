@@ -123,7 +123,7 @@ export default function OrderDetailPage() {
     const blockedStatuses = ['FAILED', 'QUEUED', 'PROCESSING', 'PENDING', 'LOCKED'];
     if (blockedStatuses.includes(currentEscrowStatus)) {
       toast.error(
-        'Escrow HScoin chưa sẵn sàng. Hãy Thử lại/Hủy đơn hoặc Kiểm tra TxHash trước khi xác nhận.',
+        'Escrow SUI chưa sẵn sàng. Hãy Thử lại/Hủy đơn hoặc Kiểm tra TxHash trước khi xác nhận.',
         { id: 'escrow-blocked' }
       );
       return;
@@ -260,7 +260,7 @@ export default function OrderDetailPage() {
 
       <header className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <p className="text-sm text-primary font-semibold">Escrow HScoin</p>
+          <p className="text-sm text-primary font-semibold">Escrow SUI</p>
           <h1 className="text-2xl font-bold">Đơn #{order.orderId}</h1>
           <p className="text-sm text-gray-600">
             Ngày đặt:{' '}
@@ -355,30 +355,30 @@ export default function OrderDetailPage() {
                     target="_blank"
                     rel="noreferrer"
                     className="font-mono text-xs text-primary hover:underline"
-                    title="Mở trên HScoin explorer"
+                    title="Mở trên SUI explorer"
                   >
                     {order.escrow.txHash}
                   </a>
                 </p>
                 <p>
-                  Block #{order.escrow.blockNumber || '—'} · {order.escrow.network || 'HScoin'}
+                  Block #{order.escrow.blockNumber || '—'} · {order.escrow.network || 'SUI'}
                 </p>
                 <p>Gas used: {order.escrow.gasUsed || '—'}</p>
                 {order.hscoinCall?.callId && (
                   <p className="text-xs text-gray-500">
-                    HScoin call ID: {order.hscoinCall.callId}
+                    SUI transaction ID: {order.hscoinCall.callId}
                   </p>
                 )}
               </>
             ) : (
               <p className="flex items-center gap-2 text-amber-600">
-                <AlertTriangle size={14} /> Chưa có hash on-chain. HScoin sẽ cập nhật sau.
+                <AlertTriangle size={14} /> Chưa có hash on-chain. Hệ thống sẽ cập nhật sau.
               </p>
             )}
             {order.hscoinCall?.status === 'FAILED' && (
               <>
                 <p className="text-xs text-rose-600">
-                   Escrow HScoin thất bại: {order.hscoinCall?.lastError || 'Không xác định'}
+                   Escrow SUI thất bại: {order.hscoinCall?.lastError || 'Không xác định'}
                 </p>
                 <p className="text-xs text-gray-600 mt-1">
                    Bạn có 3 lựa chọn: <strong>Thử lại</strong> để giữ đơn,{' '}
@@ -610,7 +610,7 @@ function renderActions({
     )}
       {escrowBlocked && (
         <p className="text-xs text-rose-600">
-          Escrow HScoin {escrowStatusLabel}. Vui lòng Thử lại/Hủy đơn hoặc Kiểm tra TxHash trước khi
+          Escrow SUI {escrowStatusLabel}. Vui lòng Thử lại/Hủy đơn hoặc Kiểm tra TxHash trước khi
           xác nhận.
         </p>
       )}

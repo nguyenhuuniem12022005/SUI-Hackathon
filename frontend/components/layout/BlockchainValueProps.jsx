@@ -5,7 +5,7 @@ const highlights = [
   {
     id: 'escrow',
     title: 'Thanh toán escrow on-chain',
-    desc: 'Giữ tiền an toàn trên HScoin cho đến khi đơn hàng hoàn tất. Giảm tranh chấp, tăng niềm tin.',
+    desc: 'Giữ tiền an toàn trên SUI blockchain cho đến khi đơn hàng hoàn tất. Giảm tranh chấp, tăng niềm tin.',
     icon: ShieldCheck,
     action: {
       label: 'Xem quy trình',
@@ -14,8 +14,8 @@ const highlights = [
   },
   {
     id: 'wallet',
-    title: 'Ví HScoin gắn liền',
-    desc: 'Đăng nhập là có ví. Người dùng có thể staking, nhận thưởng, và trả phí ngay trong P-Market.',
+    title: 'Ví SUI tích hợp',
+    desc: 'Kết nối ví SUI để giao dịch. Người dùng có thể staking, nhận thưởng PMT token ngay trong P-Market.',
     icon: Wallet,
     action: {
       label: 'Kết nối ví',
@@ -35,7 +35,7 @@ const highlights = [
   {
     id: 'api',
     title: 'API mở & quota rõ ràng',
-    desc: 'Đăng ký ứng dụng HScoin ngay trong dashboard, theo dõi quota/ngày và mở rộng hệ sinh thái.',
+    desc: 'Đăng ký ứng dụng SUI ngay trong dashboard, theo dõi quota/ngày và mở rộng hệ sinh thái.',
     icon: GitBranch,
     action: {
       label: 'Đăng ký app',
@@ -49,7 +49,7 @@ export default function BlockchainValueProps() {
     <section className="px-4 sm:px-6 lg:px-8 py-8">
       <div className="bg-white border border-emerald-100 rounded-2xl p-6 shadow-sm">
         <div className="flex flex-col gap-3 mb-6">
-          <p className="text-xs uppercase tracking-widest text-emerald-600">P-Market x HScoin</p>
+          <p className="text-xs uppercase tracking-widest text-emerald-600">P-Market x SUI Blockchain</p>
           <h2 className="text-2xl font-semibold text-gray-900">Vì sao blockchain giúp phiên bản mới tốt hơn</h2>
           <p className="text-sm text-gray-600">
             Các ưu điểm dưới đây kết nối trực tiếp với userflow hiện có: mỗi bước đều có điểm chạm on-chain rõ ràng,

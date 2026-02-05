@@ -1,21 +1,15 @@
 'use client';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-// Đổi User thành UserCircle hoặc một icon Profile khác nếu muốn
-import { ShoppingBag, Star, Gift, Shield, UserCircle, ClipboardList, Wallet, Leaf } from 'lucide-react'; 
+import { ShoppingBag, UserCircle, ClipboardList, Wallet, Leaf, History } from 'lucide-react'; 
 
+// Simplified nav items for SUI Web3 Marketplace
 const navItems = [
-  // --- SỬA DÒNG NÀY ---
-  { href: '/dashboard', icon: UserCircle, label: 'Profile' }, // Đổi thành Profile
-  // --- HẾT SỬA ---
-  { href: '/dashboard/orders', icon: ShoppingBag, label: 'Quản lý đơn hàng' },
-  { href: '/dashboard/my-products', icon: ClipboardList, label: 'Bài đăng sản phẩm' },
-  { href: '/dashboard/reviews', icon: Star, label: 'Đánh giá' },
-  { href: '/dashboard/wallet', icon: Wallet, label: 'Ví HScoin' },
-  { href: '/dashboard/rewards', icon: Gift, label: 'Thưởng & mời bạn bè' },
-  { href: '/dashboard/green-credit', icon: Leaf, label: 'Green Credit' },
-  { href: '/dashboard/reputation', icon: Shield, label: 'Điểm uy tín' },
-  { href: '/dashboard/analytics', icon: ClipboardList, label: 'Thống kê bán hàng' },
+  { href: '/dashboard', icon: UserCircle, label: 'Tổng quan' },
+  { href: '/dashboard/orders', icon: ShoppingBag, label: 'Đơn hàng Escrow' },
+  { href: '/dashboard/my-products', icon: ClipboardList, label: 'Sản phẩm của tôi' },
+  { href: '/dashboard/wallet', icon: Wallet, label: 'Ví SUI' },
+  { href: '/dashboard/green-credit', icon: Leaf, label: 'Green Credit & NFT' },
 ];
 
 const cn = (...classes) => classes.filter(Boolean).join(' ');

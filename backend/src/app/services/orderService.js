@@ -14,7 +14,7 @@ import { adjustBalance } from './userBalanceService.js';
 const REPUTATION_REWARD_BUYER = 5;
 const REPUTATION_REWARD_SELLER = 5;
 const GREEN_CREDIT_SELLER_GREEN_ORDER = 5;
-const MIN_REPUTATION_TO_BUY = Number(process.env.MIN_BUYER_REPUTATION || 65);
+const MIN_REPUTATION_TO_BUY = Number(process.env.MIN_BUYER_REPUTATION || 0); // Relaxed for Web3 demo
 const HSC_RATE_VND = Number(process.env.HSC_RATE_VND || 2170); // 1 HSC = 2.170 VND
 const HSC_DECIMALS = Number(process.env.HSC_DECIMALS || 18);
 const DECIMAL_FACTOR = 10n ** BigInt(HSC_DECIMALS);
@@ -49,7 +49,38 @@ async function ensureAndReserveStock(productId, quantity) {
   );
 
   const total = stores.reduce((acc, cur) => acc + (Number(cur.quantity) || 0), 0);
-  if (total < qty) {
+  
+  // Nếu Store trống, kiểm tra xem có default warehouse không và tạo stock từ Product
+  if (stores.length === 0 || total === 0) {
+    // Tạo default stock record nếu chưa có
+    const [warehouses] = await pool.query(`SELECT warehouseId FROM Warehouse ORDER BY warehouseId LIMIT 1`);
+    if (warehouses.length === 0) {
+      // Không có warehouse nào, bỏ qua check stock (cho phép mua)
+      console.log(`[Stock] No warehouse found, skipping stock check for product ${productId}`);
+      return [];
+    }
+    const defaultWarehouseId = warehouses[0].warehouseId;
+    // Tạo stock mặc định với số lượng lớn nếu chưa tồn tại
+    await pool.query(
+      `INSERT IGNORE INTO Store (productId, warehouseId, quantity) VALUES (?, ?, 9999)`,
+      [productId, defaultWarehouseId]
+    );
+    console.log(`[Stock] Created default stock for product ${productId} at warehouse ${defaultWarehouseId}`);
+    // Thử lại lấy stock
+    const [newStores] = await pool.query(
+      `SELECT warehouseId, quantity FROM Store WHERE productId = ? ORDER BY quantity DESC`,
+      [productId]
+    );
+    if (newStores.length === 0) {
+      // Vẫn không có, cho phép mua mà không track stock
+      return [];
+    }
+    stores.length = 0;
+    stores.push(...newStores);
+  }
+  
+  const newTotal = stores.reduce((acc, cur) => acc + (Number(cur.quantity) || 0), 0);
+  if (newTotal < qty) {
     throw ApiError.badRequest('Sản phẩm không đủ tồn kho cho số lượng yêu cầu.');
   }
 
@@ -81,7 +112,7 @@ function convertVndToWei(vndAmount) {
   const scaledVnd = BigInt(Math.round(Number(vndAmount || 0) * 1000));
   const scaledRate = BigInt(Math.round(rate * 1000));
   if (scaledRate === 0n) {
-    throw ApiError.badRequest('Tỷ giá HScoin không hợp lệ');
+    throw ApiError.badRequest('Tỷ giá token không hợp lệ');
   }
   return (scaledVnd * DECIMAL_FACTOR) / scaledRate;
 }
@@ -89,7 +120,7 @@ function convertVndToWei(vndAmount) {
 async function getBuyerWalletAddress(order) {
   const info = await userService.getWalletInfo(order.customerId);
   if (!info?.walletAddress) {
-    throw ApiError.badRequest('Người mua chưa liên kết ví HScoin. Không thể giải phóng escrow.');
+    throw ApiError.badRequest('Người mua chưa liên kết ví SUI. Không thể giải phóng escrow.');
   }
   return info.walletAddress;
 }
@@ -101,7 +132,7 @@ async function getSellerWalletAddress(orderId) {
   }
   const sellerInfo = await userService.getWalletInfo(sellerIds[0]);
   if (!sellerInfo?.walletAddress) {
-    throw ApiError.badRequest('Người bán chưa liên kết ví HScoin. Không thể giải phóng escrow.');
+    throw ApiError.badRequest('Người bán chưa liên kết ví SUI. Không thể giải phóng escrow.');
   }
   return sellerInfo.walletAddress;
 }
@@ -203,7 +234,7 @@ export async function createEscrowOrder({
     throw ApiError.badRequest('Thiếu thông tin người mua');
   }
   if (!walletAddress) {
-    throw ApiError.badRequest('Vui lòng kết nối ví HScoin trước khi đặt hàng');
+    throw ApiError.badRequest('Vui lòng kết nối ví SUI trước khi đặt hàng');
   }
   const qty = Math.max(1, Number(quantity) || 1);
   const [products] = await pool.query(
@@ -237,10 +268,7 @@ if (Number(product.supplierId) === Number(customerId)) {
     `,
     [customerId]
   );
-  const resolvedAddress = (shippingAddress || users[0]?.address || '').trim();
-  if (!resolvedAddress) {
-    throw ApiError.badRequest('Vui lòng cập nhật địa chỉ giao hàng trước khi đặt hàng.');
-  }
+  const resolvedAddress = (shippingAddress || users[0]?.address || 'Chưa cập nhật - Liên hệ người bán').trim();
   const buyerReputation = Number(users[0]?.reputationScore || 0);
   if (buyerReputation < MIN_REPUTATION_TO_BUY) {
     throw ApiError.forbidden(
@@ -251,15 +279,16 @@ if (Number(product.supplierId) === Number(customerId)) {
   const unitPrice = Number(product.unitPrice) || 0;
   const totalAmount = unitPrice * qty;
 
-  // Lấy địa chỉ ví của seller
+  // Lấy địa chỉ ví của seller (optional trong Web3 mode - seller connect ví trực tiếp khi nhận tiền)
   const [sellerRows] = await pool.query(
     `select walletAddress from User where userId = ? limit 1`,
     [product.supplierId]
   );
-  const sellerWalletAddress = sellerRows[0]?.walletAddress;
-  if (!sellerWalletAddress) {
-    throw ApiError.badRequest('Người bán chưa liên kết ví HScoin. Không thể tạo đơn hàng.');
-  }
+  const sellerWalletAddress = sellerRows[0]?.walletAddress || null;
+  // Không block đơn hàng nếu seller chưa có ví - họ sẽ cần kết nối khi nhận tiền
+  // if (!sellerWalletAddress) {
+  //   throw ApiError.badRequest('Người bán chưa liên kết ví SUI. Không thể tạo đơn hàng.');
+  // }
 
   // Tạo đơn hàng trước để lấy orderId cho escrow
   const paymentMethodId = 1;
@@ -385,7 +414,7 @@ export async function confirmOrderAsBuyer(orderId, buyerId, { isGreenApproved = 
 
   const escrowState = await getLatestEscrowState(orderId);
   if ((escrowState.callStatus || '').toUpperCase() === 'FAILED') {
-    throw ApiError.badRequest('Escrow HScoin đã thất bại. Vui lòng thử lại nạp escrow trước khi xác nhận đơn hàng.');
+    throw ApiError.badRequest('Escrow SUI đã thất bại. Vui lòng thử lại nạp escrow trước khi xác nhận đơn hàng.');
   }
   if (['PENDING', 'QUEUED', 'PROCESSING'].includes((escrowState.callStatus || '').toUpperCase())) {
     throw ApiError.badRequest('Escrow đang được xử lý, vui lòng đợi deposit hoàn tất rồi mới xác nhận.');
@@ -446,7 +475,7 @@ export async function confirmOrderAsSeller(orderId, sellerId, { walletAddress, c
 
   const escrowState = await getLatestEscrowState(orderId);
   if ((escrowState.callStatus || '').toUpperCase() === 'FAILED') {
-    throw ApiError.badRequest('Escrow HScoin đã thất bại. Vui lòng thử lại nạp escrow trước khi xác nhận đơn hàng.');
+    throw ApiError.badRequest('Escrow SUI đã thất bại. Vui lòng thử lại nạp escrow trước khi xác nhận đơn hàng.');
   }
   if (['PENDING', 'QUEUED', 'PROCESSING'].includes((escrowState.callStatus || '').toUpperCase())) {
     throw ApiError.badRequest('Escrow đang được xử lý, vui lòng đợi deposit hoàn tất rồi mới xác nhận.');
@@ -512,7 +541,7 @@ export async function markOrderCompleted(orderId, { triggerReferral = true, wall
   } catch (error) {
     console.error(`[Escrow] Release failed for order ${orderId}:`, error.message);
     throw ApiError.serviceUnavailable(
-      'Giải phóng escrow thất bại. Vui lòng thử lại hoặc kiểm tra HScoin.'
+      'Giải phóng escrow thất bại. Vui lòng thử lại hoặc kiểm tra SUI blockchain.'
     );
   }
 

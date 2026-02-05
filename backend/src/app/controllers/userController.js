@@ -211,7 +211,7 @@ export async function disconnectWallet(req, res, next) {
     await userService.disconnectWallet(req.user.userId);
     return res.status(200).json({
       success: true,
-      message: 'Đã hủy liên kết ví HScoin.',
+      message: 'Đã hủy liên kết ví SUI.',
     });
   } catch (error) {
     return next(error);

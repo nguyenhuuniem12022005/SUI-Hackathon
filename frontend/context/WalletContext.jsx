@@ -1,92 +1,174 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import toast from 'react-hot-toast';
-import WalletConnectModal from '../components/blockchain/WalletConnectModal';
-import { connectHsWallet, disconnectHsWallet, fetchWalletInfo } from '../lib/api';
+import { 
+  useCurrentAccount, 
+  useDisconnectWallet,
+  useSignAndExecuteTransaction,
+  useSuiClient
+} from '@mysten/dapp-kit';
 
 const WalletContext = createContext();
 
+/**
+ * SUI Wallet Context Provider
+ * Manages SUI wallet connection state and provides transaction signing
+ */
 export function WalletProvider({ children }) {
-  const [isConnected, setIsConnected] = useState(false);
-  const [walletAddress, setWalletAddress] = useState('');
-  const [isModalOpen, setModalOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isLoadingWallet, setIsLoadingWallet] = useState(true);
+  const currentAccount = useCurrentAccount();
+  const { mutate: disconnect } = useDisconnectWallet();
+  const { mutateAsync: signAndExecute } = useSignAndExecuteTransaction();
+  const suiClient = useSuiClient();
+  
+  const [suiBalance, setSuiBalance] = useState(null);
+  const [pmtBalance, setPmtBalance] = useState(null);
+  const [isLoadingBalance, setIsLoadingBalance] = useState(false);
 
-  useEffect(() => {
-    refreshWallet();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Derive wallet state from dapp-kit
+  const isConnected = !!currentAccount;
+  const walletAddress = currentAccount?.address || '';
 
-  const refreshWallet = async () => {
+  // Fetch all balances when connected
+  const refreshBalances = useCallback(async () => {
+    if (!currentAccount?.address) {
+      setSuiBalance(null);
+      setPmtBalance(null);
+      return;
+    }
+
     try {
-      setIsLoadingWallet(true);
-      const data = await fetchWalletInfo();
-      if (data?.walletAddress) {
-        setWalletAddress(data.walletAddress);
-        setIsConnected(true);
+      setIsLoadingBalance(true);
+      
+      // Fetch SUI balance
+      const balanceData = await suiClient.getBalance({
+        owner: currentAccount.address,
+      });
+      setSuiBalance(balanceData.totalBalance);
+
+      // Fetch PMT token balance
+      const packageId = process.env.NEXT_PUBLIC_PMARKET_PACKAGE_ID;
+      if (packageId) {
+        try {
+          const coins = await suiClient.getCoins({
+            owner: currentAccount.address,
+            coinType: `${packageId}::pmarket_token::PMARKET_TOKEN`,
+          });
+          const totalPMT = coins.data.reduce((sum, coin) => sum + Number(coin.balance), 0);
+          setPmtBalance(totalPMT / 1_000_000); // 6 decimals
+        } catch {
+          setPmtBalance(0);
+        }
       } else {
-        setWalletAddress('');
-        setIsConnected(false);
+        setPmtBalance(0);
       }
     } catch (error) {
-      console.warn('[WalletContext] Không thể tải thông tin ví:', error?.message || error);
+      console.error('[WalletContext] Error fetching balances:', error);
+      setSuiBalance(null);
+      setPmtBalance(null);
     } finally {
-      setIsLoadingWallet(false);
+      setIsLoadingBalance(false);
     }
-  };
+  }, [currentAccount?.address, suiClient]);
 
-  const handleSubmit = async ({ walletAddress, privateKey }) => {
-    setIsSubmitting(true);
+  useEffect(() => {
+    refreshBalances();
+  }, [refreshBalances]);
+
+  // Legacy fetchBalance for backward compatibility
+  const fetchBalance = refreshBalances;
+
+  // Disconnect wallet
+  const disconnectWallet = useCallback(() => {
+    disconnect();
+    setBalance(null);
+    toast('Đã ngắt kết nối ví SUI.');
+  }, [disconnect]);
+
+  // Sign and execute a transaction
+  const executeTransaction = useCallback(async (transaction) => {
+    if (!currentAccount) {
+      throw new Error('Vui lòng kết nối ví SUI trước.');
+    }
+
     try {
-      const data = await connectHsWallet({ walletAddress, privateKey });
-      setWalletAddress(data?.walletAddress || walletAddress);
-      setIsConnected(true);
-      toast.success('Liên kết ví HScoin thành công!');
-      setModalOpen(false);
+      const result = await signAndExecute({
+        transaction,
+      });
+      
+      // Wait for transaction confirmation
+      const txResult = await suiClient.waitForTransaction({
+        digest: result.digest,
+        options: {
+          showEffects: true,
+          showEvents: true,
+        },
+      });
+
+      // Refresh balance after transaction
+      await fetchBalance();
+
+      return txResult;
     } catch (error) {
-      toast.error(error.message || 'Không thể liên kết ví.');
+      console.error('[WalletContext] Transaction error:', error);
       throw error;
-    } finally {
-      setIsSubmitting(false);
     }
-  };
+  }, [currentAccount, signAndExecute, suiClient, fetchBalance]);
 
-  const handleDisconnect = async () => {
+  // Get PMT token balance (custom token)
+  const getPMTBalance = useCallback(async () => {
+    if (!currentAccount?.address) return 0;
+
     try {
-      await disconnectHsWallet();
-      setWalletAddress('');
-      setIsConnected(false);
-      toast('Đã hủy liên kết ví.');
-    } catch (error) {
-      toast.error(error.message || 'Không thể hủy liên kết ví.');
-    }
-  };
+      // Get coins of PMT type
+      // Note: Replace with actual package ID after deployment
+      const packageId = process.env.NEXT_PUBLIC_PMARKET_PACKAGE_ID;
+      if (!packageId) return 0;
 
-  const openModal = () => setModalOpen(true);
+      const coins = await suiClient.getCoins({
+        owner: currentAccount.address,
+        coinType: `${packageId}::pmarket_token::PMARKET_TOKEN`,
+      });
+
+      // Sum all PMT coin balances
+      const totalBalance = coins.data.reduce((sum, coin) => {
+        return sum + Number(coin.balance);
+      }, 0);
+
+      // Convert from smallest unit (6 decimals)
+      return totalBalance / 1_000_000;
+    } catch (error) {
+      console.error('[WalletContext] Error fetching PMT balance:', error);
+      return 0;
+    }
+  }, [currentAccount?.address, suiClient]);
 
   const value = {
+    // Connection state
     isConnected,
     walletAddress,
-    isLoadingWallet,
-    connectWallet: openModal,
-    disconnectWallet: handleDisconnect,
-    refreshWallet,
+    currentAccount,
+    
+    // Balances
+    suiBalance,
+    pmtBalance,
+    balance: suiBalance ? Number(suiBalance) / 1_000_000_000 : null, // Legacy: SUI in decimal
+    isLoadingBalance,
+    refreshBalances,
+    fetchBalance,
+    getPMTBalance,
+    
+    // Actions
+    disconnectWallet,
+    executeTransaction,
+    
+    // SUI client for direct access
+    suiClient,
   };
 
   return (
     <WalletContext.Provider value={value}>
       {children}
-      <WalletConnectModal
-        open={isModalOpen}
-        onClose={() => setModalOpen(false)}
-        onSubmit={handleSubmit}
-        isSubmitting={isSubmitting}
-        isConnected={isConnected}
-        walletAddress={walletAddress}
-        onDisconnect={handleDisconnect}
-      />
     </WalletContext.Provider>
   );
 }
@@ -98,3 +180,5 @@ export const useWallet = () => {
   }
   return context;
 };
+
+export default WalletContext;

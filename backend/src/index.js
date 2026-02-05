@@ -1,4 +1,4 @@
-// backend/src/index.js (ĐÃ FIX LỖI STATIC FILE - localhost mode)
+// backend/src/index.js (ĐÃ FIX LỖI STATIC FILE - localhost mode, SUI Web3)
 
 import express from 'express';
 import dotenv from 'dotenv';

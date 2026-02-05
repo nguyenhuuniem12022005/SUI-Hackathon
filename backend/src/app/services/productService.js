@@ -5,7 +5,7 @@ import * as supplierService from './supplierService.js';
 import { executeSimpleToken } from './blockchainService.js';
 
 const MAX_PRODUCT_EDITS = 3;
-const MIN_SELLER_REPUTATION = Number(process.env.MIN_SELLER_REPUTATION || 65);
+const MIN_SELLER_REPUTATION = Number(process.env.MIN_SELLER_REPUTATION || 0); // Relaxed for Web3 demo
 const GREEN_CREDIT_REWARD_GREEN_PRODUCT = Number(
   process.env.GREEN_CREDIT_REWARD_GREEN_PRODUCT || 25
 );
@@ -245,25 +245,25 @@ export async function createProduct(productData, supplierId, { walletAddress, co
         await ensureDailyGreenLimit(supplierId);
     }
 
-    // Burn phí đăng bài nếu có walletAddress
-    if (walletAddress && PRODUCT_POST_FEE > 0) {
-        try {
-            await executeSimpleToken({
-                caller: walletAddress,
-                method: 'burn',
-                args: [PRODUCT_POST_FEE],
-                value: 0,
-                contractAddress,
-                userId: supplierId,
-            });
-        } catch (error) {
-            if (error.statusCode !== 503) {
-                throw ApiError.badRequest(`Không thể burn phí đăng bài: ${error.message}`);
-            }
-            // Nếu 503 (queued) thì vẫn cho đăng bài, burn sẽ xử lý sau
-            console.warn(`[Product] Burn fee queued for supplier ${supplierId}`);
-        }
-    }
+    // Burn phí đăng bài nếu có walletAddress (optional trong Web3 mode)
+    // Skip burn fee trong SUI Web3 mode - phí được xử lý trên frontend qua smart contract
+    // if (walletAddress && PRODUCT_POST_FEE > 0) {
+    //     try {
+    //         await executeSimpleToken({
+    //             caller: walletAddress,
+    //             method: 'burn',
+    //             args: [PRODUCT_POST_FEE],
+    //             value: 0,
+    //             contractAddress,
+    //             userId: supplierId,
+    //         });
+    //     } catch (error) {
+    //         if (error.statusCode !== 503) {
+    //             throw ApiError.badRequest(`Không thể burn phí đăng bài: ${error.message}`);
+    //         }
+    //         console.warn(`[Product] Burn fee queued for supplier ${supplierId}`);
+    //     }
+    // }
 
     const sql = `
         insert into Product (
@@ -281,7 +281,7 @@ export async function createProduct(productData, supplierId, { walletAddress, co
         imageURL || null,
         unitPrice,
         size || null,
-        status || 'Draft',
+        status || 'Active', // Auto-activate for SUI Web3 demo
         discount || 0,
         complianceDocs ? JSON.stringify(complianceDocs) : null,
         0,
@@ -289,6 +289,16 @@ export async function createProduct(productData, supplierId, { walletAddress, co
     ]);
 
     const insertId = results.insertId;
+
+    // Auto-create default stock for SUI Web3 demo (product visible immediately)
+    const [warehouses] = await pool.query(`SELECT warehouseId FROM Warehouse ORDER BY warehouseId LIMIT 1`);
+    if (warehouses.length > 0) {
+        await pool.query(
+            `INSERT IGNORE INTO Store (productId, warehouseId, quantity) VALUES (?, ?, 9999)`,
+            [insertId, warehouses[0].warehouseId]
+        );
+        console.log(`[Product] Auto-created default stock for product ${insertId}`);
+    }
 
     const [rows] = await pool.query(`
         select * 

@@ -8,7 +8,7 @@ export async function createProduct(req, res) {
     
     const productData = {
         ...req.body,
-        status: 'Draft',
+        status: 'Active', // Auto-activate for SUI Web3 demo
         imageURL
     };
 

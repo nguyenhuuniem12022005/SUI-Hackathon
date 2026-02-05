@@ -9,6 +9,7 @@ import {
   logoutUser,
   removeAuthToken,
   buildAvatarUrl,
+  loginWithWallet as loginWithWalletApi,
 } from '../lib/api';
 
 const AuthContext = createContext();
@@ -134,6 +135,53 @@ export function AuthProvider({ children }) {
     }
   };
 
+  // Login with SUI Wallet
+  const loginWithWallet = async (walletData) => {
+    try {
+      const data = await loginWithWalletApi(walletData);
+      const apiUser = data.user || {};
+
+      const reputationSource =
+        apiUser.reputation ??
+        apiUser.reputationScore ??
+        apiUser.reputation_score ??
+        0;
+      const greenCreditSource = apiUser.greenCredit ?? apiUser.green_credit ?? 0;
+      const badgeSource = apiUser.greenBadgeLevel ?? apiUser.green_badge_level ?? 0;
+
+      const userData = {
+        userId: apiUser.userId,
+        firstName: apiUser.firstName || '',
+        lastName: apiUser.lastName || '',
+        fullName:
+          apiUser.fullName ||
+          `${apiUser.lastName || ''} ${apiUser.firstName || ''}`.trim() ||
+          'Người dùng SUI',
+        userName: apiUser.userName || '',
+        email: apiUser.email || '',
+        phone: apiUser.phone || '',
+        address: apiUser.address || '',
+        avatar: buildAvatarUrl(apiUser.avatar),
+        dateOfBirth: apiUser.dateOfBirth || '',
+        reputation: Number(reputationSource) || 0,
+        greenCredit: Number(greenCreditSource) || 0,
+        greenBadgeLevel: Number(badgeSource) || 0,
+        walletAddress: walletData.walletAddress,
+      };
+
+      setUser(userData);
+      setToken(data.token.access_token);
+
+      localStorage.setItem('pmarket_user', JSON.stringify(userData));
+      localStorage.setItem('pmarket_token', data.token.access_token);
+
+      return userData;
+    } catch (error) {
+      console.error('[AuthContext] Wallet Login Error:', error);
+      throw error;
+    }
+  };
+
   const logout = async () => {
     if (token) {
       try {
@@ -156,6 +204,7 @@ export function AuthProvider({ children }) {
     token,
     isAuthenticated: !!user && !!token,
     login,
+    loginWithWallet,
     register,
     logout,
     isLoadingInitial,

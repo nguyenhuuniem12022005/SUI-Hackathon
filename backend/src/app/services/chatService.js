@@ -28,6 +28,7 @@ export async function getOrCreateChatRoom(customerId, productId, productOverride
 
     const supplierId = product.supplierId;
 
+    // Check if ChatRoom already exists
     const [existing] = await pool.query(
         `
         select *
@@ -42,24 +43,58 @@ export async function getOrCreateChatRoom(customerId, productId, productOverride
         return { product, chatRoom: existing[0] };
     }
 
-    const [result] = await pool.query(
-        `
-        insert into ChatRoom (customerId, supplierId, status)
-        values (?, ?, 'Active')
-        `,
-        [customerId, supplierId]
-    );
+    // Use INSERT IGNORE to handle race conditions
+    try {
+        const [result] = await pool.query(
+            `
+            insert ignore into ChatRoom (customerId, supplierId, status)
+            values (?, ?, 'Active')
+            `,
+            [customerId, supplierId]
+        );
 
-    const [rows] = await pool.query(
-        `
-        select *
-        from ChatRoom
-        where chatRoomId = ?
-        `,
-        [result.insertId]
-    );
+        // If insert was ignored (duplicate), fetch the existing one
+        if (result.affectedRows === 0) {
+            const [existingRoom] = await pool.query(
+                `
+                select *
+                from ChatRoom
+                where customerId = ? and supplierId = ?
+                limit 1
+                `,
+                [customerId, supplierId]
+            );
+            return { product, chatRoom: existingRoom[0] };
+        }
 
-    return { product, chatRoom: rows[0] };
+        const [rows] = await pool.query(
+            `
+            select *
+            from ChatRoom
+            where chatRoomId = ?
+            `,
+            [result.insertId]
+        );
+
+        return { product, chatRoom: rows[0] };
+    } catch (error) {
+        // If duplicate entry error, try to get existing room
+        if (error.code === 'ER_DUP_ENTRY') {
+            const [existingRoom] = await pool.query(
+                `
+                select *
+                from ChatRoom
+                where customerId = ? and supplierId = ?
+                limit 1
+                `,
+                [customerId, supplierId]
+            );
+            if (existingRoom.length > 0) {
+                return { product, chatRoom: existingRoom[0] };
+            }
+        }
+        throw error;
+    }
 }
 
 export async function getChatRoomById(chatRoomId) {

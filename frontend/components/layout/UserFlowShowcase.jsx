@@ -96,7 +96,7 @@ const flows = [
       },
       {
         title: 'Thưởng điểm đôi bên',
-        desc: 'Điểm thưởng hiện ở ví P-Market và sẽ đồng bộ sang HScoin.',
+        desc: 'Điểm thưởng hiện ở ví P-Market và sẽ đồng bộ lên SUI blockchain.',
       },
     ],
     cta: { label: 'Vào trang thưởng', href: '/dashboard/rewards' },
@@ -112,7 +112,7 @@ export default function UserFlowShowcase() {
             <p className="text-xs uppercase tracking-wide text-emerald-600">Blueprint trước khi tích hợp blockchain</p>
             <h2 className="text-2xl font-semibold text-gray-900 mt-1">Userflow cốt lõi của P-Market</h2>
             <p className="text-sm text-gray-600 mt-2">
-              Các bước bên dưới được chuẩn hóa để dễ dàng đưa lên HScoin (escrow, smart contract, quota API) mà không phải thiết kế lại luồng nghiệp vụ.
+              Các bước bên dưới được chuẩn hóa để dễ dàng đưa lên SUI blockchain (escrow, smart contract, PMT token) mà không phải thiết kế lại luồng nghiệp vụ.
             </p>
           </div>
           <Link href="/dashboard" className="inline-flex items-center justify-center rounded-full bg-emerald-600 px-5 py-2 text-sm font-semibold text-white shadow hover:bg-emerald-700">

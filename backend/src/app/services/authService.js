@@ -1,4 +1,5 @@
 import bcrypt from 'bcrypt';
+import crypto from 'crypto';
 import dotenv from 'dotenv';
 import jwt from 'jsonwebtoken';
 import pool from '../../configs/mysql.js';
@@ -90,4 +91,64 @@ export function authToken(user) {
 export function blockToken(token){
     const expireIn = moment().add(7, 'days').unix();
     tokenBlocklist.set(token, true, expireIn);
+}
+
+// ======================= WALLET LOGIN/REGISTER =======================
+export async function loginOrRegisterWithWallet({ walletAddress, signature, message, timestamp }) {
+    // Verify the message is recent (within 5 minutes)
+    const now = Date.now();
+    if (Math.abs(now - timestamp) > 5 * 60 * 1000) {
+        throw new Error('Signature expired. Please try again.');
+    }
+
+    // Check if user already exists with this wallet address
+    const [existingUsers] = await pool.query(
+        `SELECT * FROM User WHERE walletAddress = ? LIMIT 1`,
+        [walletAddress]
+    );
+
+    if (existingUsers.length > 0) {
+        // User exists - return for login
+        const user = existingUsers[0];
+        return user;
+    }
+
+    // User doesn't exist - create new account
+    const shortAddress = walletAddress.slice(0, 6) + '...' + walletAddress.slice(-4);
+    const userName = 'sui_' + walletAddress.slice(2, 10).toLowerCase();
+    const referralToken = await referralService.generateUniqueReferralToken(userName);
+    
+    // Generate a random password hash for wallet users (they won't use it)
+    const randomPassword = crypto.randomBytes(32).toString('hex');
+    const passwordHash = await bcrypt.hash(randomPassword, 10);
+
+    const [result] = await pool.query(`
+        INSERT INTO User(firstName, lastName, userName, email, passwordHash, walletAddress, referralToken, reputationScore, greenCredit)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 100, 0)
+    `, [
+        'SUI User',
+        shortAddress,
+        userName,
+        `${userName}@wallet.sui`, // Placeholder email
+        passwordHash,
+        walletAddress,
+        referralToken
+    ]);
+
+    const newUserId = result.insertId;
+
+    // Create Supplier record
+    const shopName = 'shop_' + newUserId + '_' + Math.random().toString(36).substring(2, 6);
+    await pool.query(`
+        INSERT INTO Supplier(supplierId, shopName, sellerRating)
+        VALUES (?, ?, 0)
+    `, [newUserId, shopName]);
+
+    // Fetch the newly created user
+    const [newUsers] = await pool.query(
+        `SELECT * FROM User WHERE userId = ?`,
+        [newUserId]
+    );
+
+    return newUsers[0];
 }

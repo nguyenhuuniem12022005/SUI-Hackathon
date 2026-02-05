@@ -1,4 +1,4 @@
-﻿import * as blockchainService from '../services/blockchainService.js';
+import * as blockchainService from '../services/blockchainService.js';
 import * as userService from '../services/userService.js';
 
 export async function getGreenCreditSummary(req, res, next) {
@@ -247,7 +247,7 @@ export async function saveUserContract(req, res, next) {
     const data = await blockchainService.saveUserContract(payload);
     return res.status(201).json({
       success: true,
-      message: 'Đã lưu contract HScoin',
+      message: 'Đã lưu contract SUI',
       data,
     });
   } catch (error) {
@@ -326,6 +326,59 @@ export async function listUserContracts(req, res, next) {
     return res.status(200).json({
       success: true,
       data,
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+// Get SUI transaction history
+export async function getSuiTransactions(req, res, next) {
+  try {
+    const { limit = 50 } = req.query;
+    const { getUserTransactions } = await import('../services/suiBlockchainService.js');
+    const transactions = await getUserTransactions(req.user?.userId, { limit: Number(limit) });
+    return res.status(200).json({
+      success: true,
+      data: transactions,
+    });
+  } catch (error) {
+    return next(error);
+  }
+}
+
+// Claim PMT from faucet (demo mode - simulates token distribution)
+export async function claimFaucet(req, res, next) {
+  try {
+    const { walletAddress, amount = 1000 } = req.body;
+    const userId = req.user?.userId;
+
+    if (!walletAddress) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng cung cấp địa chỉ ví',
+      });
+    }
+
+    // For demo: Record the faucet claim in database
+    const { recordTransaction } = await import('../services/suiBlockchainService.js');
+    await recordTransaction({
+      userId,
+      transactionDigest: `faucet_${Date.now()}_${Math.random().toString(36).slice(2)}`,
+      transactionType: 'FAUCET_CLAIM',
+      status: 'SUCCESS',
+      relatedType: 'faucet',
+      rawData: { amount, walletAddress },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `🎉 Đã nhận ${amount} PMT thành công!`,
+      data: {
+        amount,
+        walletAddress,
+        note: 'Demo mode - Để nhận PMT thực, cần deploy smart contract với faucet function',
+      },
     });
   } catch (error) {
     return next(error);

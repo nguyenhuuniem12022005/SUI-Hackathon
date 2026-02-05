@@ -93,4 +93,8 @@ blockchainRouter.get('/contracts', blockchainController.listUserContracts);
 blockchainRouter.get('/accounts/me', blockchainController.getMyAccountBalance);
 blockchainRouter.get('/token-balance', blockchainController.getMyTokenBalance);
 
+// SUI Blockchain routes
+blockchainRouter.get('/sui/transactions', blockchainController.getSuiTransactions);
+blockchainRouter.post('/faucet', blockchainController.claimFaucet);
+
 export default blockchainRouter;

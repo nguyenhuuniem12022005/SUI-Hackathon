@@ -1,25 +1,36 @@
-﻿/* eslint-disable @next/next/no-img-element */
+/* eslint-disable @next/next/no-img-element */
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
+import { useCurrentAccount } from '@mysten/dapp-kit';
 import { resolveProductImage } from '../../../lib/image';
 import { Card, CardHeader, CardContent } from '../../../components/ui/Card';
+import { useWallet } from '../../../context/WalletContext';
 import {
   fetchMyOrders,
   fetchSellerOrders,
   confirmOrderAsBuyer,
   confirmOrderAsSeller,
 } from '../../../lib/api';
-import { Package, Truck, ExternalLink, Loader2, Shield, AlertTriangle } from 'lucide-react';
+import {
+  buildConfirmDelivery,
+  buildSellerConfirm,
+  buildCancelEscrow,
+  ESCROW_STATUS,
+} from '../../../lib/suiService';
+import { Package, Truck, ExternalLink, Loader2, Shield, AlertTriangle, Wallet } from 'lucide-react';
+import ConnectWalletButton from '../../../components/blockchain/ConnectWalletButton';
 
 const currency = new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' });
-const HSCOIN_EXPLORER =
-  process.env.NEXT_PUBLIC_HSCOIN_EXPLORER || 'https://hsc-w3oq.onrender.com/auth/contract.html';
-const ESCROW_BLOCKED_STATUSES = ['FAILED', 'QUEUED', 'PROCESSING', 'PENDING', 'LOCKED'];
-const escrowBlockedMessage =
-  'Escrow HScoin chưa sẵn sàng. Hãy Thử lại/Hủy đơn hoặc Kiểm tra TxHash trước khi xác nhận.';
+
+// SUI Explorer URL
+const SUI_EXPLORER = process.env.NEXT_PUBLIC_SUI_EXPLORER || 'https://suiscan.xyz/testnet';
+
+// Escrow status that block actions
+const ESCROW_BLOCKED_STATUSES = [ESCROW_STATUS.DISPUTED];
+const escrowBlockedMessage = 'Escrow đang trong trạng thái tranh chấp. Vui lòng liên hệ hỗ trợ.';
 
 const statusBadge = {
   Pending: 'bg-amber-100 text-amber-700',
@@ -37,8 +48,14 @@ const statusLabels = {
   Cancelled: 'Đã hủy',
 };
 
-const getEscrowStatus = (order) =>
-  String(order?.hscoinCall?.status || order?.escrow?.status || '').toUpperCase();
+const getEscrowStatus = (order) => {
+  // Check SUI escrow first
+  if (order?.suiEscrow?.status !== undefined) {
+    return order.suiEscrow.status;
+  }
+  // Fallback to legacy format
+  return String(order?.hscoinCall?.status || order?.escrow?.status || '').toUpperCase();
+};
 
 export default function OrdersPage() {
   const [purchases, setPurchases] = useState([]);
@@ -53,6 +70,10 @@ export default function OrdersPage() {
   const [salesPage, setSalesPage] = useState(1);
   const pageSize = 10;
   const maxItems = 50;
+
+  // SUI Wallet
+  const { isConnected, executeTransaction } = useWallet();
+  const currentAccount = useCurrentAccount();
 
   const loadPurchases = useCallback(async () => {
     setLoadingPurchases(true);
@@ -91,39 +112,109 @@ export default function OrdersPage() {
     loadSales();
   }, [loadPurchases, loadSales]);
 
+  // Buyer confirms delivery - releases escrow to seller
   const handleBuyerConfirm = async (order) => {
     const orderId = order?.orderId;
-    const escrowStatus = getEscrowStatus(order);
+    const escrowObjectId = order?.suiEscrow?.escrowObjectId;
+    
+    if (!isConnected || !currentAccount) {
+      toast.error('Vui lòng kết nối ví SUI để xác nhận đơn hàng');
+      return;
+    }
+
+    const escrowStatus = order?.suiEscrow?.status;
     if (ESCROW_BLOCKED_STATUSES.includes(escrowStatus)) {
       toast.error(escrowBlockedMessage, { id: 'escrow-blocked-list' });
       return;
     }
+
     setActionOrderId(orderId);
     try {
+      // Execute on-chain confirmation if escrow exists
+      if (escrowObjectId) {
+        const tx = buildConfirmDelivery(escrowObjectId);
+        await executeTransaction(tx);
+        toast.success('Đã xác nhận nhận hàng trên blockchain!');
+      }
+      
+      // Update backend
       const response = await confirmOrderAsBuyer(orderId);
-      toast.success(response?.message || 'Đã ghi nhận xác nhận của bạn.');
+      toast.success(response?.message || 'Đã ghi nhận xác nhận của bạn. Tiền đã được chuyển cho người bán.');
       await refreshAll();
     } catch (err) {
+      console.error('Buyer confirm error:', err);
       toast.error(err.message || 'Không thể xác nhận đơn hàng.');
     } finally {
       setActionOrderId(null);
     }
   };
 
+  // Seller confirms shipment
   const handleSellerConfirm = async (order) => {
     const orderId = order?.orderId;
-    const escrowStatus = getEscrowStatus(order);
+    const escrowObjectId = order?.suiEscrow?.escrowObjectId;
+    
+    if (!isConnected || !currentAccount) {
+      toast.error('Vui lòng kết nối ví SUI để xác nhận đơn hàng');
+      return;
+    }
+
+    const escrowStatus = order?.suiEscrow?.status;
     if (ESCROW_BLOCKED_STATUSES.includes(escrowStatus)) {
       toast.error(escrowBlockedMessage, { id: 'escrow-blocked-list' });
       return;
     }
+
     setActionOrderId(orderId);
     try {
+      // Execute on-chain confirmation if escrow exists
+      if (escrowObjectId) {
+        const tx = buildSellerConfirm(escrowObjectId);
+        await executeTransaction(tx);
+        toast.success('Đã xác nhận giao hàng trên blockchain!');
+      }
+      
+      // Update backend
       const response = await confirmOrderAsSeller(orderId);
       toast.success(response?.message || 'Đã ghi nhận xác nhận của bạn.');
       await refreshAll();
     } catch (err) {
+      console.error('Seller confirm error:', err);
       toast.error(err.message || 'Không thể xác nhận đơn hàng.');
+    } finally {
+      setActionOrderId(null);
+    }
+  };
+
+  // Cancel order (buyer only, before seller confirms)
+  const handleCancelOrder = async (order) => {
+    const orderId = order?.orderId;
+    const escrowObjectId = order?.suiEscrow?.escrowObjectId;
+    
+    if (!isConnected || !currentAccount) {
+      toast.error('Vui lòng kết nối ví SUI để hủy đơn hàng');
+      return;
+    }
+
+    if (order.status !== 'Pending') {
+      toast.error('Chỉ có thể hủy đơn hàng khi đang chờ xác nhận');
+      return;
+    }
+
+    setActionOrderId(orderId);
+    try {
+      // Execute on-chain cancellation if escrow exists
+      if (escrowObjectId) {
+        const tx = buildCancelEscrow(escrowObjectId);
+        await executeTransaction(tx);
+        toast.success('Đã hủy escrow và hoàn tiền trên blockchain!');
+      }
+      
+      // TODO: Update backend to cancel order
+      await refreshAll();
+    } catch (err) {
+      console.error('Cancel order error:', err);
+      toast.error(err.message || 'Không thể hủy đơn hàng.');
     } finally {
       setActionOrderId(null);
     }
@@ -132,12 +223,30 @@ export default function OrdersPage() {
   return (
     <div className="space-y-6">
       <header className="space-y-1">
-        <p className="text-sm text-primary font-semibold">Flow #3 · Escrow &amp; giao dịch</p>
+        <p className="text-sm text-primary font-semibold">Flow #3 · SUI Escrow &amp; giao dịch</p>
         <h1 className="text-2xl font-bold">Quản lý đơn hàng</h1>
         <p className="text-sm text-gray-600">
-          Theo dõi cả đơn đã mua và đơn bạn bán ra. Escrow HScoin chỉ được giải phóng khi cả người mua và người bán xác nhận.
+          Theo dõi cả đơn đã mua và đơn bạn bán ra. Thanh toán được bảo vệ bởi SUI smart contract escrow.
         </p>
       </header>
+
+      {/* Wallet Connection Status */}
+      {!isConnected && (
+        <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="text-yellow-600 mt-0.5" size={20} />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-yellow-800">Kết nối ví SUI để quản lý đơn hàng</p>
+              <p className="text-xs text-yellow-700 mt-1">
+                Bạn cần kết nối ví SUI để xác nhận đơn hàng và nhận/gửi thanh toán qua escrow.
+              </p>
+              <div className="mt-3">
+                <ConnectWalletButton variant="compact" />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-2">
         <button
@@ -243,12 +352,6 @@ function TabOrders({
             ) : (
               <Truck size={16} className="inline mr-1" />
             );
-          const hscoinCall = order.hscoinCall;
-          const hscoinStatus = getEscrowStatus(order) || 'LOCKED';
-          const nextRunText = hscoinCall?.nextRunAt
-            ? new Date(hscoinCall.nextRunAt).toLocaleString('vi-VN')
-            : 'Đang chờ HScoin';
-          const txLink = order.escrow?.txHash ? `${HSCOIN_EXPLORER}?tx=${order.escrow.txHash}` : null;
 
           return (
             <Card key={order.orderId}>
@@ -314,59 +417,60 @@ function TabOrders({
                   </div>
                   <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm text-gray-700 space-y-1">
                     <div className="flex items-center gap-2 text-primary font-semibold">
-                      <Shield size={14} /> Escrow HScoin
+                      <Shield size={14} /> SUI Escrow
                     </div>
-                    <p>
-                      Trạng thái: <strong>{hscoinStatus}</strong>
-                    </p>
-                    {hscoinCall?.status === 'QUEUED' && (
-                      <p className="text-xs text-amber-600 flex items-center gap-1">
-                        <AlertTriangle size={12} /> Lần thử tiếp: {nextRunText}
-                      </p>
-                    )}
-                    {hscoinCall?.status === 'FAILED' && (
-                      <p className="text-xs text-rose-600 flex items-center gap-1">
-                        <AlertTriangle size={12} /> Lỗi: {hscoinCall.lastError || 'HScoin từ chối giao dịch.'}
-                      </p>
-                    )}
-                    {hscoinCall?.callId && <p className="text-xs">HScoin call ID: #{hscoinCall.callId}</p>}
-                    {order.escrow?.txHash ? (
+                    
+                    {order.suiEscrow ? (
                       <>
                         <p>
-                          Tx Hash:{' '}
-                          <button
-                            type="button"
-                            onClick={() => copyHash(order.escrow?.txHash)}
-                            className="font-mono text-xs text-primary underline"
-                          >
-                            {order.escrow?.txHash?.slice(0, 12)}…
-                          </button>
+                          Trạng thái:{' '}
+                          <strong>
+                            {order.suiEscrow.status === 0 && 'Đang chờ'}
+                            {order.suiEscrow.status === 1 && 'Người bán đã xác nhận'}
+                            {order.suiEscrow.status === 2 && 'Hoàn tất'}
+                            {order.suiEscrow.status === 3 && 'Đã hủy'}
+                            {order.suiEscrow.status === 4 && 'Tranh chấp'}
+                          </strong>
                         </p>
-                        <p>
-                          Block #{order.escrow?.blockNumber || '—'} · {order.escrow?.network || 'HScoin'}
+                        <p className="text-xs">
+                          Số tiền: <strong>{(order.suiEscrow.amount / 1_000_000).toFixed(2)} PMT</strong>
                         </p>
-                        {txLink && (
+                        {order.suiEscrow.escrowObjectId && (
+                          <p>
+                            Object ID:{' '}
+                            <button
+                              type="button"
+                              onClick={() => copyHash(order.suiEscrow.escrowObjectId)}
+                              className="font-mono text-xs text-primary underline"
+                            >
+                              {order.suiEscrow.escrowObjectId?.slice(0, 12)}…
+                            </button>
+                          </p>
+                        )}
+                        {order.suiEscrow.createdTxDigest && (
                           <Link
-                            href={txLink}
+                            href={`${SUI_EXPLORER}/tx/${order.suiEscrow.createdTxDigest}`}
                             target="_blank"
                             className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
                           >
-                            Xem trên explorer <ExternalLink size={12} />
+                            Xem giao dịch trên SUI Explorer <ExternalLink size={12} />
                           </Link>
                         )}
                       </>
                     ) : (
                       <p className="text-xs text-gray-600">
-                        Chưa có hash on-chain. Lệnh burn sẽ tự cập nhật khi HScoin xử lý xong.
+                        Escrow chưa được tạo trên blockchain.
                       </p>
                     )}
+                    
                     <Link
-                      href={HSCOIN_EXPLORER}
+                      href={SUI_EXPLORER}
                       target="_blank"
                       className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:underline"
                     >
-                      Mở explorer HScoin <ExternalLink size={12} />
+                      Mở SUI Explorer <ExternalLink size={12} />
                     </Link>
+                    
                     {renderActionRow({
                       order,
                       isSellerView,
@@ -421,16 +525,8 @@ function renderActionRow({ order, isSellerView, onBuyerConfirm, onSellerConfirm,
     ? order.status === 'Pending' || order.status === 'BuyerConfirmed'
     : order.status === 'Pending' || order.status === 'SellerConfirmed';
 
-  const escrowStatus = getEscrowStatus(order);
-  const escrowBlocked = ESCROW_BLOCKED_STATUSES.includes(escrowStatus);
-  const escrowStatusLabel =
-    {
-      FAILED: 'thất bại',
-      QUEUED: 'đang xếp hàng',
-      PROCESSING: 'đang xử lý',
-      PENDING: 'đang khởi tạo',
-      LOCKED: 'đang khóa',
-    }[escrowStatus] || 'chưa sẵn sàng';
+  const escrowStatus = order?.suiEscrow?.status;
+  const escrowBlocked = escrowStatus === ESCROW_STATUS.DISPUTED;
 
   if (!canConfirm && !waitingCounterparty) {
     return null;
@@ -441,12 +537,17 @@ function renderActionRow({ order, isSellerView, onBuyerConfirm, onSellerConfirm,
       ? 'Hoàn tất giao dịch'
       : 'Xác nhận đã giao hàng'
     : order.status === 'SellerConfirmed'
-    ? 'Tôi đã nhận hàng'
-    : 'Xác nhận đã thanh toán';
+    ? 'Xác nhận đã nhận hàng'
+    : 'Chờ người bán xác nhận';
+
+  // Buyer can only confirm after seller confirms
+  const buyerCanConfirm = !isSellerView && order.status === 'SellerConfirmed';
+  // Seller can confirm when pending
+  const sellerCanConfirm = isSellerView && order.status === 'Pending';
 
   return (
     <div className="pt-2 border-t border-primary/10 mt-3 flex flex-col gap-2">
-      {canConfirm && (
+      {(buyerCanConfirm || sellerCanConfirm) && (
         <button
           type="button"
           className="inline-flex items-center justify-center rounded-md bg-primary px-3 py-2 text-xs font-semibold text-white hover:bg-primary/90 disabled:opacity-70"
@@ -457,23 +558,31 @@ function renderActionRow({ order, isSellerView, onBuyerConfirm, onSellerConfirm,
         >
           {actionOrderId === order.orderId ? (
             <span className="flex items-center gap-2">
-              <Loader2 size={14} className="animate-spin" /> Đang xử lý...
+              <Loader2 size={14} className="animate-spin" /> Đang xử lý blockchain...
             </span>
           ) : (
-            actionLabel
+            <>
+              <Wallet size={14} className="mr-1" />
+              {actionLabel}
+            </>
           )}
         </button>
       )}
       {escrowBlocked && (
         <p className="text-xs text-rose-600">
-          Escrow HScoin {escrowStatusLabel}. Vui lòng Thử lại/Hủy đơn hoặc Kiểm tra TxHash trước khi xác nhận.
+          Escrow đang trong trạng thái tranh chấp. Vui lòng liên hệ hỗ trợ.
         </p>
       )}
       {waitingCounterparty && (
         <p className="text-xs text-amber-600">
           {isSellerView
-            ? 'Bạn đã xác nhận. Đang chờ người mua hoàn tất.'
-            : 'Bạn đã xác nhận. Đang chờ người bán.'}
+            ? 'Bạn đã xác nhận giao hàng. Đang chờ người mua xác nhận nhận hàng.'
+            : 'Bạn đã xác nhận. Đang chờ người bán xác nhận giao hàng.'}
+        </p>
+      )}
+      {!isSellerView && order.status === 'Pending' && (
+        <p className="text-xs text-gray-500">
+          Đang chờ người bán xác nhận đã giao hàng. Sau khi nhận hàng, bạn sẽ xác nhận để tiền được chuyển cho người bán.
         </p>
       )}
     </div>

@@ -1,41 +1,34 @@
 'use client';
-import { useState } from 'react';
-import AuthForm from '../components/auth/AuthForm'; // Kiểm tra lại đường dẫn
-import { useAuth } from '../context/AuthContext'; // Kiểm tra lại đường dẫn
-import toast from 'react-hot-toast';
 
-export default function LoginPage() {
-    const { login } = useAuth(); 
-    const [isLoading, setIsLoading] = useState(false);
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '../context/AuthContext';
 
-    const handleLoginSubmit = async (formData) => { 
-        console.log('🔄 [page.jsx] Nhận formData:', formData);
-        
-        if (!formData || !formData.email || !formData.password) {
-            toast.error('Dữ liệu form không hợp lệ');
-            return;
-        }
+/**
+ * Root page - Redirects to appropriate page based on auth state
+ * Web3 Pure Mode: Wallet-based authentication only
+ */
+export default function RootPage() {
+  const router = useRouter();
+  const { isAuthenticated, isLoadingInitial } = useAuth();
 
-        setIsLoading(true);
-        try {
-            console.log('📤 [page.jsx] Gọi login() với formData:', formData);
-            await login(formData); // <-- Truyền 1 đối tượng formData
-        } catch (error) {
-            console.error('❌ [page.jsx] Login failed:', error);
-            setIsLoading(false);
-            // Lỗi đã được toast trong AuthContext
-        }
-    };
+  useEffect(() => {
+    if (!isLoadingInitial) {
+      if (isAuthenticated) {
+        router.replace('/home');
+      } else {
+        router.replace('/auth/login');
+      }
+    }
+  }, [isAuthenticated, isLoadingInitial, router]);
 
-    return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-            <div className="max-w-md w-full space-y-8">
-                <AuthForm
-                    formType="login"
-                    onSubmit={handleLoginSubmit}
-                    isLoading={isLoading}
-                />
-            </div>
-        </div>
-    );
+  // Loading state while checking auth
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-900 via-purple-900 to-indigo-900">
+      <div className="flex flex-col items-center gap-4">
+        <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+        <p className="text-gray-400 text-sm">Đang tải...</p>
+      </div>
+    </div>
+  );
 }

@@ -1,4 +1,4 @@
-﻿import crypto from 'crypto';
+import crypto from 'crypto';
 import pool from '../../configs/mysql.js';
 import ApiError from '../../utils/classes/api-error.js';
 
@@ -2151,7 +2151,8 @@ async function resolveContractAddress({ userId, contractAddress, walletAddress }
   if (SIMPLE_TOKEN_ADDRESS) {
     return SIMPLE_TOKEN_ADDRESS;
   }
-  throw ApiError.badRequest('Chưa cấu hình địa chỉ contract HScoin');
+  // Web3 mode: return null instead of throwing error - contract operations are optional
+  return null;
 }
 
 async function getLatestContractByCaller(walletAddress) {
@@ -2198,7 +2199,8 @@ export async function resolveContractForBalance({ userId, contractAddress, walle
   if (SIMPLE_TOKEN_ADDRESS) {
     return SIMPLE_TOKEN_ADDRESS;
   }
-  throw ApiError.badRequest('Không xác định được contract HScoin cho ví này. Vui lòng lưu contract trước.');
+  // Web3 mode: return null instead of throwing error - contract operations are optional
+  return null;
 }
 
 export async function compileContract({ sourceCode, contractName }) {
@@ -2316,7 +2318,7 @@ export async function ensureUserEscrowContract({ userId, walletAddress, contract
 
   // Không có -> auto deploy contract mặc định và lưu cho user
   if (!walletAddress) {
-    throw ApiError.badRequest('Thiếu ví để auto deploy contract HScoin.');
+    throw ApiError.badRequest('Thiếu ví để auto deploy contract.');
   }
   const deployed = await deployContract({
     sourceCode: DEFAULT_ESCROW_SOURCE,
@@ -2326,7 +2328,7 @@ export async function ensureUserEscrowContract({ userId, walletAddress, contract
     userId,
   });
   if (!deployed?.contractAddress) {
-    throw ApiError.serviceUnavailable('Không thể deploy contract HScoin tự động.');
+    throw ApiError.serviceUnavailable('Không thể deploy contract tự động.');
   }
   return deployed.contractAddress.toLowerCase();
 }

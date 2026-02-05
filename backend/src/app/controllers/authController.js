@@ -149,3 +149,61 @@ export async function confirmPasswordReset(req, res, next) {
     return next(error);
   }
 }
+
+// ======================= WALLET LOGIN =======================
+export async function walletLogin(req, res) {
+  try {
+    const { walletAddress, signature, message, timestamp } = req.body;
+
+    if (!walletAddress || !signature || !message || !timestamp) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing required wallet authentication data.',
+      });
+    }
+
+    // Validate wallet address format (SUI addresses start with 0x and are 66 chars)
+    if (!walletAddress.startsWith('0x') || walletAddress.length !== 66) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid SUI wallet address format.',
+      });
+    }
+
+    const user = await authService.loginOrRegisterWithWallet({
+      walletAddress,
+      signature,
+      message,
+      timestamp,
+    });
+
+    const tokenInfo = authService.authToken(user);
+
+    res.status(200).json({
+      success: true,
+      message: 'Đăng nhập bằng ví thành công!',
+      user: {
+        userId: user.userId,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        fullName: `${user.firstName || ''} ${user.lastName || ''}`.trim(),
+        userName: user.userName,
+        email: user.email,
+        phone: user.phone || '',
+        address: user.address || '',
+        avatar: user.avatar || '/avatar.png',
+        referralToken: user.referralToken,
+        reputationScore: Number(user.reputationScore) || 0,
+        greenCredit: Number(user.greenCredit) || 0,
+        walletAddress: user.walletAddress,
+      },
+      token: tokenInfo,
+    });
+  } catch (error) {
+    console.error('[Wallet Login Error]', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Đăng nhập bằng ví thất bại!',
+    });
+  }
+}

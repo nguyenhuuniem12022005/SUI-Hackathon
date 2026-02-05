@@ -45,9 +45,9 @@ export default function WalletConnectModal({
               <Wallet size={18} />
             </div>
             <div>
-              <p className="text-base font-semibold text-gray-900">Liên kết ví HScoin</p>
+              <p className="text-base font-semibold text-gray-900">Liên kết ví SUI</p>
               <p className="text-xs text-gray-500">
-                Nhập địa chỉ ví và private key được cấp trên trang HScoin.
+                Kết nối ví SUI của bạn để giao dịch trên blockchain.
               </p>
             </div>
           </div>

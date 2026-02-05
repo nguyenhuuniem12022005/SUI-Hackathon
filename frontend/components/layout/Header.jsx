@@ -15,14 +15,17 @@ import {
   Wallet,
   PlusSquare,
   LogOut,
-  Slash,
+  Copy,
+  Check,
+  ExternalLink,
 } from 'lucide-react';
 import { useWallet } from '../../context/WalletContext';
-import { useAuth } from '../../context/AuthContext'; // ? import AuthContext
+import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { buildAvatarUrl } from '../../lib/api';
 import { resolveProductImage } from '../../lib/image';
 import { fetchNotifications, markNotificationsRead } from '../../lib/api';
+import { useCurrentAccount, useDisconnectWallet } from '@mysten/dapp-kit';
 import dynamic from 'next/dynamic';
 
 const ChatWidget = dynamic(() => import('../chat/ChatWidget'), { ssr: false });
@@ -31,16 +34,21 @@ const FALLBACK_PRODUCT_IMAGE = 'https://placehold.co/80x60?text=P-Market';
 
 export default function Header() {
   const router = useRouter();
-  const { isConnected, walletAddress, connectWallet, disconnectWallet, isLoadingWallet } = useWallet();
-  const { user, isAuthenticated, logout } = useAuth(); // ✅ lấy user từ context
+  const { suiBalance, pmtBalance } = useWallet();
+  const { user, isAuthenticated, logout } = useAuth();
   const { cartItems = [] } = useCart();
+  const currentAccount = useCurrentAccount();
+  const { mutate: disconnectSuiWallet } = useDisconnectWallet();
+  
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isWalletMenuOpen, setIsWalletMenuOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [notifications, setNotifications] = useState([]);
   const [isNotiLoading, setIsNotiLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
 
-  // X? l? t?m ki?m
+  // Handle search
   const handleSearch = () => {
     if (searchTerm.trim()) {
       router.push("/category/all?q=" + encodeURIComponent(searchTerm));
@@ -54,18 +62,32 @@ export default function Header() {
     }
   };
 
-  // ? T�n & Avatar ng�?i d�ng
-  const userName = user?.fullName || user?.userName || 'Kh�ch';
+  // User name & Avatar - prioritize wallet address for Web3
+  const walletAddress = currentAccount?.address || user?.walletAddress;
+  const shortWallet = walletAddress 
+    ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}` 
+    : '';
+  const userName = user?.fullName || user?.userName || shortWallet || 'User';
   const userAvatarUrl = buildAvatarUrl(user?.avatar);
 
-  // ? S? l�?ng th�ng b�o v� gi? h�ng
+  // Notification & cart counts
   const notificationCount = notifications.filter((n) => !n.read).length;
   const cartCount = cartItems.reduce((sum, item) => sum + (item?.quantity || 1), 0);
 
-  // ? H�m x? l? ��ng xu?t
-  const handleLogout = async () => {
-    await logout(); // clear user + token
-    router.push('/'); // quay l?i trang ��ng nh?p
+  // Copy wallet address
+  const handleCopyAddress = async () => {
+    if (walletAddress) {
+      await navigator.clipboard.writeText(walletAddress);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  // View on explorer
+  const handleViewExplorer = () => {
+    if (walletAddress) {
+      window.open(`https://suiscan.xyz/testnet/account/${walletAddress}`, '_blank');
+    }
   };
 
   // fetch notifications when dropdown opened first time
@@ -145,40 +167,88 @@ export default function Header() {
 
           {/* --- ICONS & USER --- */}
           <div className="flex-shrink-0 flex items-center gap-1 md:gap-2">
-            {/* --- Ví (Wallet) --- */}
-            {isConnected ? (
-              <div className="hidden lg:flex items-center gap-2 rounded-full bg-primary-hover pl-3 pr-1 py-1 text-xs font-medium">
+            {/* --- SUI Wallet Info --- */}
+            {walletAddress && (
+              <div 
+                className="relative"
+                onMouseEnter={() => setIsWalletMenuOpen(true)}
+                onMouseLeave={() => setIsWalletMenuOpen(false)}
+              >
                 <button
                   type="button"
-                  onClick={connectWallet}
-                  className="inline-flex items-center gap-1"
-                  title="Nhấn để thay đổi ví HScoin"
+                  className="hidden lg:flex items-center gap-2 rounded-full bg-gradient-to-r from-blue-600/80 to-cyan-500/80 pl-3 pr-3 py-1.5 text-xs font-medium hover:from-blue-600 hover:to-cyan-500 transition-all"
                 >
                   <Wallet size={16} />
-                  <span>
-                    {walletAddress.substring(0, 6)}…
-                    {walletAddress.substring(walletAddress.length - 4)}
-                  </span>
+                  <span>{shortWallet}</span>
                 </button>
-                <button
-                  type="button"
-                  onClick={disconnectWallet}
-                  className="rounded-full p-1 text-white/80 hover:bg-white/20"
-                  aria-label="Hủy liên kết ví"
-                >
-                  <Slash size={14} />
-                </button>
+
+                {/* Wallet Dropdown */}
+                {isWalletMenuOpen && (
+                  <div className="absolute right-0 mt-2 w-72 bg-gray-900 rounded-xl shadow-xl overflow-hidden z-20 border border-gray-700">
+                    <div className="p-4 border-b border-gray-700">
+                      <p className="text-gray-400 text-xs mb-1">Địa chỉ ví SUI</p>
+                      <div className="flex items-center gap-2">
+                        <code className="text-white text-xs font-mono flex-1 truncate">
+                          {walletAddress}
+                        </code>
+                        <button
+                          onClick={handleCopyAddress}
+                          className="p-1.5 rounded-lg hover:bg-gray-700 transition-colors"
+                          title="Sao chép địa chỉ"
+                        >
+                          {copied ? (
+                            <Check size={14} className="text-green-400" />
+                          ) : (
+                            <Copy size={14} className="text-gray-400" />
+                          )}
+                        </button>
+                        <button
+                          onClick={handleViewExplorer}
+                          className="p-1.5 rounded-lg hover:bg-gray-700 transition-colors"
+                          title="Xem trên Explorer"
+                        >
+                          <ExternalLink size={14} className="text-gray-400" />
+                        </button>
+                      </div>
+                    </div>
+                    
+                    {/* Balances */}
+                    <div className="p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-400 text-sm">SUI Balance</span>
+                        <span className="text-white font-medium">
+                          {suiBalance ? `${(Number(suiBalance) / 1e9).toFixed(4)} SUI` : '0 SUI'}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-400 text-sm">PMT Balance</span>
+                        <span className="text-cyan-400 font-medium">
+                          {pmtBalance ? `${Number(pmtBalance).toLocaleString()} PMT` : '0 PMT'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="p-3 border-t border-gray-700 flex gap-2">
+                      <Link
+                        href="/dashboard/wallet"
+                        className="flex-1 text-center py-2 px-3 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition-colors"
+                      >
+                        Quản lý ví
+                      </Link>
+                      <button
+                        onClick={() => {
+                          disconnectSuiWallet();
+                          logout();
+                        }}
+                        className="py-2 px-3 bg-red-600/20 hover:bg-red-600/40 text-red-400 rounded-lg text-sm font-medium transition-colors"
+                      >
+                        Ngắt kết nối
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-            ) : (
-              <Button
-                onClick={connectWallet}
-                variant="outline"
-                size="sm"
-                disabled={isLoadingWallet}
-                className="hidden lg:block bg-white text-primary hover:bg-gray-100 border-white font-semibold"
-              >
-                {isLoadingWallet ? 'Đang tải ví…' : 'Connect Wallet'}
-              </Button>
             )}
 
             {/* --- ��ng s?n ph?m --- */}
@@ -197,7 +267,7 @@ export default function Header() {
               onMouseLeave={() => setIsNotificationOpen(false)}
             >
               <Link
-                href="/notifications"
+                href="/dashboard"
                 className="relative p-2 rounded-full hover:bg-primary-hover focus:outline-none"
                 aria-label="Thông báo"
               >
@@ -247,7 +317,7 @@ export default function Header() {
                   </div>
                   <div className="py-2 px-4 border-t text-center">
                     <Link
-                      href="/notifications"
+                      href="/dashboard"
                       className="text-sm font-medium text-primary hover:underline"
                     >
                       Xem tất cả
@@ -333,20 +403,23 @@ export default function Header() {
               )}
             </div>
 
-            {/* --- USER & ��NG XU?T --- */}
+            {/* --- USER & LOGOUT --- */}
             <div className="flex items-center gap-2">
               <Link
                 href="/dashboard"
                 className="hidden md:flex items-center gap-2 cursor-pointer p-1 rounded-full hover:bg-primary-hover"
               >
-                <Avatar src={userAvatarUrl} alt={`Avatar c?a ${userName}`} />
-                <span className="text-sm font-medium">{userName}</span>
+                <Avatar src={userAvatarUrl} alt={`Avatar của ${userName}`} />
+                <span className="text-sm font-medium max-w-[120px] truncate">{userName}</span>
               </Link>
 
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={handleLogout}
+                onClick={() => {
+                  disconnectSuiWallet();
+                  logout();
+                }}
                 className="text-white hover:bg-primary-hover p-2 h-auto"
                 aria-label="Đăng xuất"
               >

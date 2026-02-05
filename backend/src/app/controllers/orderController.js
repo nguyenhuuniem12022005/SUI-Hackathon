@@ -15,8 +15,8 @@ export async function createEscrowOrder(req, res, next) {
       success: true,
       message:
         data.hscoinStatus === 'QUEUED'
-          ? 'Đã tạo đơn hàng và xếp hàng burn HScoin. Hệ thống sẽ thử lại tự động.'
-          : 'Đã tạo đơn hàng và burn HScoin thành công.',
+          ? 'Đã tạo đơn hàng và xếp hàng xử lý. Hệ thống sẽ thử lại tự động.'
+          : 'Đã tạo đơn hàng thành công.',
       data,
     });
   } catch (error) {

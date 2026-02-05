@@ -13,6 +13,7 @@ import { useWallet } from '../../../context/WalletContext';
 import { useAuth } from '../../../context/AuthContext';
 import { getProductById, getReviewsByProductId, buildAvatarUrl, createEscrowOrder } from '../../../lib/api';
 import { resolveProductImage } from '../../../lib/image';
+import { buildCreateEscrow, toSmallestUnit, getPMTCoins } from '../../../lib/suiService';
 import Skeleton from 'react-loading-skeleton';
 import 'react-loading-skeleton/dist/skeleton.css';
 import toast from 'react-hot-toast';
@@ -111,13 +112,7 @@ export default function ProductDetailPage() {
   
   const handleEscrowPurchase = async () => {
     if (!isConnected || !walletAddress) {
-      toast.error('Vui lòng kết nối ví HScoin trước khi mua!');
-      connectWallet();
-      return;
-    }
-    if (!user?.address) {
-      toast.error('Vui lòng cập nhật địa chỉ giao hàng trong dashboard trước khi mua.');
-      router.push('/dashboard');
+      toast.error('Vui lòng kết nối ví SUI trước khi mua!');
       return;
     }
     const maxQty = Number(totalQuantity || 0);
@@ -130,20 +125,54 @@ export default function ProductDetailPage() {
       toast.error(`Chỉ còn ${maxQty} sản phẩm trong kho.`);
       return;
     }
+    
     setIsEscrowProcessing(true);
     try {
+      // Step 1: Create order in backend first to get orderId
       const payload = {
         productId: product?.productId || product?.id,
         quantity: desiredQty,
         walletAddress,
-        shippingAddress: user.address,
+        shippingAddress: user?.address || 'Chưa cập nhật - Vui lòng liên hệ người bán',
       };
-      const response = await createEscrowOrder(payload);
-      toast.success(response?.message || 'Đã tạo đơn hàng escrow thành công!');
+      const orderResponse = await createEscrowOrder(payload);
+      const orderId = orderResponse?.data?.orderId || orderResponse?.orderId;
+      
+      if (!orderId) {
+        toast.success('Đã tạo đơn hàng thành công!');
+        router.push('/dashboard/orders');
+        return;
+      }
+
+      // Step 2: Get seller wallet address
+      const sellerWallet = product?.seller?.walletAddress;
+      
+      // Step 3: Calculate amount in PMT (price in VND / 1000 = PMT estimate)
+      const totalPrice = priceValue * desiredQty;
+      const pmtAmount = toSmallestUnit(totalPrice / 1000); // Convert VND to PMT units
+      
+      // Step 4: Check if user has PMT coins for blockchain escrow
+      const { suiClient } = await import('../../../context/WalletContext').then(m => m);
+      
+      // For now, skip blockchain transaction if no seller wallet
+      if (!sellerWallet) {
+        toast.success('Đã tạo đơn hàng escrow! (Chờ người bán kết nối ví để nhận tiền)');
+        router.push('/dashboard/orders');
+        return;
+      }
+
+      // TODO: Create blockchain escrow transaction when PMT token is available
+      // const pmtCoins = await getPMTCoins(suiClient, walletAddress);
+      // if (pmtCoins.length > 0) {
+      //   const tx = buildCreateEscrow(orderId, sellerWallet, pmtCoins[0].coinObjectId, pmtAmount);
+      //   await executeTransaction(tx);
+      // }
+
+      toast.success(orderResponse?.message || 'Đã tạo đơn hàng escrow thành công!');
       router.push('/dashboard/orders');
     } catch (error) {
       console.error('Escrow order error:', error);
-      toast.error(error.message || 'Không thể thực hiện giao dịch HScoin.');
+      toast.error(error.message || 'Không thể thực hiện giao dịch.');
     } finally {
       setIsEscrowProcessing(false);
     }

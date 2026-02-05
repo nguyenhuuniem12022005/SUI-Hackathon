@@ -44,4 +44,10 @@ authRouter.post(
     authController.confirmPasswordReset
 );
 
+// Wallet login (SUI)
+authRouter.post(
+    '/wallet-login',
+    authController.walletLogin
+);
+
 export default authRouter;

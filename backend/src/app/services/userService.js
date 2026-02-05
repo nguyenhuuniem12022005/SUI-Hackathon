@@ -505,7 +505,7 @@ export async function getUserDashboardData(userId) {
 
 export async function connectWallet(userId, { walletAddress, privateKey }) {
     if (!walletAddress || !privateKey) {
-        throw ApiError.badRequest('Thiếu thông tin ví HScoin');
+        throw ApiError.badRequest('Thiếu thông tin ví SUI');
     }
 
     // Normalize và validate địa chỉ ví
@@ -531,15 +531,15 @@ export async function connectWallet(userId, { walletAddress, privateKey }) {
         
         if (!response.ok) {
             if (response.status === 404) {
-                throw ApiError.badRequest('Địa chỉ ví không tồn tại trên hệ thống HScoin');
+                throw ApiError.badRequest('Địa chỉ ví không tồn tại trên hệ thống SUI');
             }
-            throw ApiError.badRequest(`Không thể truy cập HScoin API (${response.status})`);
+            throw ApiError.badRequest(`Không thể truy cập SUI API (${response.status})`);
         }
 
         hscoinWalletData = await response.json();
         
         if (!hscoinWalletData || !hscoinWalletData.private_key) {
-            throw ApiError.badRequest('HScoin không trả về thông tin private key cho ví này');
+            throw ApiError.badRequest('Hệ thống không trả về thông tin xác thực cho ví này');
         }
     } catch (error) {
         // Nếu là ApiError thì throw lại
@@ -547,8 +547,8 @@ export async function connectWallet(userId, { walletAddress, privateKey }) {
             throw error;
         }
         // Nếu là lỗi network hoặc parse JSON
-        console.error('[Wallet] HScoin API error:', error.message);
-        throw ApiError.badRequest('Không thể kết nối với HScoin để xác thực ví. Vui lòng thử lại sau.');
+        console.error('[Wallet] SUI API error:', error.message);
+        throw ApiError.badRequest('Không thể kết nối với SUI để xác thực ví. Vui lòng thử lại sau.');
     }
 
     // BƯỚC 2: So sánh private key user nhập với private key từ HSCOIN
@@ -561,7 +561,7 @@ export async function connectWallet(userId, { walletAddress, privateKey }) {
     // So sánh chính xác (case-sensitive sau khi đã normalize)
     if (hscoinPrivateKey !== cleanKey) {
         throw ApiError.badRequest(
-            'Private key bạn nhập KHÔNG khớp với ví trên HScoin. Không thể liên kết ví.'
+            'Thông tin ví không hợp lệ. Không thể liên kết ví.'
         );
     }
 

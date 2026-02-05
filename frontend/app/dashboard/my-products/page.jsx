@@ -46,10 +46,10 @@ export default function MyProductsPage() {
   const [error, setError] = useState('');
   const [updatingId, setUpdatingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
-  const [hscoinHistory, setHscoinHistory] = useState([]);
-  const [hscoinAlerts, setHscoinAlerts] = useState([]);
-  const [hscoinLoading, setHscoinLoading] = useState(false);
-  const [hscoinError, setHscoinError] = useState('');
+  const [suiHistory, setSuiHistory] = useState([]);
+  const [suiAlerts, setSuiAlerts] = useState([]);
+  const [suiLoading, setSuiLoading] = useState(false);
+  const [suiError, setSuiError] = useState('');
   const { walletAddress, isConnected, connectWallet } = useWallet();
   const router = useRouter();
 
@@ -73,10 +73,10 @@ export default function MyProductsPage() {
       try {
         const data = await fetchSimpleTokenAlerts({ severity: 'warning', limit: 10 });
         if (!ignore) {
-          setHscoinAlerts(data || []);
+          setSuiAlerts(data || []);
         }
       } catch (err) {
-        console.warn('Không thể tải cảnh báo HScoin:', err.message);
+        console.warn('Không thể tải cảnh báo SUI:', err.message);
       }
     }
     loadAlerts();
@@ -90,25 +90,25 @@ export default function MyProductsPage() {
   useEffect(() => {
     let ignore = false;
     if (!walletAddress) {
-      setHscoinHistory([]);
+      setSuiHistory([]);
       return () => {};
     }
 
     async function loadHistory() {
-      setHscoinLoading(true);
-      setHscoinError('');
+      setSuiLoading(true);
+      setSuiError('');
       try {
         const data = await fetchSimpleTokenHistory(walletAddress, 10);
         if (!ignore) {
-          setHscoinHistory(data || []);
+          setSuiHistory(data || []);
         }
       } catch (err) {
         if (!ignore) {
-          setHscoinError(err.message || 'Không thể tải lịch sử HScoin.');
+          setSuiError(err.message || 'Không thể tải lịch sử SUI.');
         }
       } finally {
         if (!ignore) {
-          setHscoinLoading(false);
+          setSuiLoading(false);
         }
       }
     }
@@ -126,7 +126,7 @@ export default function MyProductsPage() {
     return result;
   }, [products]);
 
-  const hscoinStatusChips = hscoinHistory.slice(0, 4).map((item) => {
+  const suiStatusChips = suiHistory.slice(0, 4).map((item) => {
     const colorMap = {
       SUCCESS: 'text-emerald-600 bg-emerald-50 border-emerald-200',
       PROCESSING: 'text-blue-600 bg-blue-50 border-blue-200',
@@ -154,7 +154,7 @@ export default function MyProductsPage() {
         note: 'Yêu cầu kiểm duyệt từ dashboard P-Market.',
         attachments: [],
       });
-      toast.success('Đã gửi yêu cầu kiểm duyệt. Đội HScoin sẽ phản hồi sớm.');
+      toast.success('Đã gửi yêu cầu kiểm duyệt. Hệ thống sẽ phản hồi sớm.');
       setProducts((prev) =>
         prev.map((item) =>
           item.productId === productId
@@ -201,7 +201,7 @@ export default function MyProductsPage() {
         <p className="text-sm text-primary font-semibold">Flow #2 · Đăng bán sản phẩm</p>
         <h1 className="text-2xl font-bold">Quản lý sản phẩm của bạn</h1>
         <p className="text-sm text-gray-600">
-          Hoàn thiện mô tả, gửi kiểm duyệt rồi kích hoạt trên HScoin escrow marketplace. Danh sách bên dưới thể
+          Hoàn thiện mô tả, gửi kiểm duyệt rồi kích hoạt trên SUI escrow marketplace. Danh sách bên dưới thể
           hiện rõ trạng thái từng bước để chuẩn bị đưa dữ liệu lên blockchain.
         </p>
       </header>
@@ -213,11 +213,11 @@ export default function MyProductsPage() {
       <Card>
         <CardHeader className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <CardTitle className="flex items-center gap-2">
-            <ShieldCheck size={18} /> Trạng thái HScoin
+            <ShieldCheck size={18} /> Trạng thái SUI Blockchain
           </CardTitle>
           <div className="text-sm text-gray-600 flex items-center gap-2">
             <span>
-              Ví HScoin:{' '}
+              Ví SUI:{' '}
               {walletAddress ? (
                 <code className="font-semibold">
                   {walletAddress.slice(0, 6)}...{walletAddress.slice(-4)}
@@ -232,31 +232,31 @@ export default function MyProductsPage() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          {hscoinError && (
-            <div className="border border-red-200 bg-red-50 px-3 py-2 rounded text-sm text-red-600">{hscoinError}</div>
+          {suiError && (
+            <div className="border border-red-200 bg-red-50 px-3 py-2 rounded text-sm text-red-600">{suiError}</div>
           )}
-          {hscoinLoading ? (
+          {suiLoading ? (
             <div className="flex items-center gap-2 text-sm text-gray-600">
-              <Loader2 className="animate-spin" size={16} /> Đang tải lịch sử burn token...
+              <Loader2 className="animate-spin" size={16} /> Đang tải lịch sử giao dịch...
             </div>
-          ) : hscoinHistory.length === 0 ? (
+          ) : suiHistory.length === 0 ? (
             <p className="text-sm text-gray-600">
-              Chưa có giao dịch HScoin nào gần đây. Khi đăng bài, hệ thống sẽ burn phí và hiển thị trạng thái tại đây.
+              Chưa có giao dịch SUI nào gần đây. Khi đăng bài, hệ thống sẽ burn phí PMT và hiển thị trạng thái tại đây.
             </p>
           ) : (
-            <div className="grid gap-3 md:grid-cols-2">{hscoinStatusChips}</div>
+            <div className="grid gap-3 md:grid-cols-2">{suiStatusChips}</div>
           )}
           <div className="rounded-md border border-dashed border-gray-200 p-4 text-sm text-gray-600 space-y-2">
             <p className="font-semibold text-gray-800">Gợi ý xử lý nhanh:</p>
             <ul className="list-disc pl-4 space-y-1">
-              <li>Yêu cầu burn sẽ tự động thử lại tối đa 5 lần nếu HScoin quá tải.</li>
+              <li>Yêu cầu burn PMT sẽ tự động thử lại tối đa 5 lần nếu network quá tải.</li>
               <li>Trạng thái QUEUED quá 10 phút? Kiểm tra ví được phép và kết nối lại.</li>
               <li>Mọi lỗi chi tiết được ghi lại để đội kỹ thuật hỗ trợ khi cần.</li>
             </ul>
-            {hscoinAlerts.length > 0 && (
+            {suiAlerts.length > 0 && (
               <div className="mt-3 space-y-1">
                 <p className="font-semibold text-gray-800">Cảnh báo mới nhất:</p>
-                {hscoinAlerts.slice(0, 3).map((alert) => (
+                {suiAlerts.slice(0, 3).map((alert) => (
                   <div key={alert.alertId} className="text-xs text-rose-600 bg-rose-50 border border-rose-100 rounded px-2 py-1">
                     {alert.createdAt ? new Date(alert.createdAt).toLocaleTimeString('vi-VN') : ''} · {alert.message}
                   </div>
@@ -431,7 +431,7 @@ export default function MyProductsPage() {
                   )}
                   {product.status === 'Pending' && (
                     <div className="text-xs text-amber-600 bg-amber-50 border border-amber-100 rounded-md px-3 py-2">
-                      Đội HScoin đang kiểm duyệt giấy tờ của bạn. Hãy chuẩn bị sẵn chứng nhận để đẩy on-chain.
+                      Hệ thống đang kiểm duyệt giấy tờ của bạn. Hãy chuẩn bị sẵn chứng nhận để đẩy on-chain.
                     </div>
                   )}
                   {product.status === 'Active' && (

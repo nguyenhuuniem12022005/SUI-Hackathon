@@ -12,7 +12,7 @@ export const requestGreenCreditSync = Joi.object({
 
 export const executeSimpleToken = Joi.object({
   caller: Joi.string().trim().required().label('Caller address'),
-  value: Joi.number().integer().min(0).default(0).label('Giá trị HScoin'),
+  value: Joi.number().integer().min(0).default(0).label('Giá trị token'),
   method: Joi.string().trim().label('Tên hàm'),
   args: Joi.array().default([]).label('Danh sách tham số'),
   contractAddress: Joi.string().trim().optional().label('Địa chỉ hợp đồng'),
@@ -44,7 +44,7 @@ export const saveUserContract = Joi.object({
     .pattern(/^0x[a-fA-F0-9]{40}$/)
     .required()
     .label('Địa chỉ contract'),
-  network: Joi.string().trim().max(60).default('HScoin Devnet').label('Mạng'),
+  network: Joi.string().trim().max(60).default('SUI Testnet').label('Mạng'),
   isDefault: Joi.boolean().default(false).label('Đặt làm mặc định'),
 });
 
